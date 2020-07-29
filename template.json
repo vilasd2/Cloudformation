@@ -1,0 +1,221 @@
+{
+    "Description": "stack descriptaon.....",
+    "Metadata" : {
+      "ItemName" : "Simple VM",
+      "Version" : "1.0"
+    },
+    "Parameters": {
+        "AMI": {
+            "Default": "ami-00928476475547598",
+            "Description": "The Amazon Ubuntu AMI",
+            "Type": "String"
+        },
+        "EBSVolumeSize": {
+            "Default": "20",
+            "Description": "The size of the EBS volume",
+            "Type": "String"
+        },
+        "InstanceName": {
+            "Default": "My instance name",
+            "Description": "EC2 Instance Name",
+            "Type": "String"
+        },
+        "InstanceType": {
+            "AllowedValues": [
+                "t2.micro",
+                "t2.small",
+                "t2.medium",
+                "t2.large",
+                "c4.large",
+                "c4.xlarge",
+                "c4.2xlarge",
+                "c4.4xlarge",
+                "c4.8xlarge"
+            ],
+            "ConstraintDescription": "must be a valid EC2 instance type",
+            "Default": "t2.micro",
+            "Description": "EC2 instance type",
+            "Type": "String"
+        },
+        "KeyName": {
+            "ConstraintDescription": "Must be the name of an existing EC2 KeyPair.",
+            "Description": "Name of an existing EC2 KeyPair to enable SSH access to NAT instances.",
+            "Type": "AWS::EC2::KeyPair::KeyName"
+        },
+        "Subnet": {
+            "ConstraintDescription": "Must be a valid Subnet.",
+            "Description": "The subnet to place the instance in...",
+            "Type": "AWS::EC2::Subnet::Id"
+        },
+        "VPC": {
+            "ConstraintDescription": "Must be a valid VPC.",
+            "Description": "The VPC to deploy to...",
+            "Type": "AWS::EC2::VPC::Id"
+        }
+    },
+    "Resources": {
+        "InstanceProfile" : {
+            "Type" : "AWS::IAM::InstanceProfile",
+            "Properties" : {
+              "Path" : "/",
+              "Roles" : ["EC2_Role"]
+            }
+          },
+        "Instance": {
+            "Metadata": {
+                "AWS::CloudFormation::Init": {
+                    "config": {
+                        "packages": {
+                            "apt": {
+                                "awscli": [],
+                                "ruby": [],
+                                "unzip": []
+                            }
+                        },
+                        "files": {
+                        "/tmp/sample.conf": {
+                            "content": {
+                                "Fn::Join": [
+                                    "",
+                                    [
+                                        "write a sample file to OS and give permissions....   \n"
+                                    ]
+                                ]
+                            },
+                            "mode": "000644",
+                            "owner": "root",
+                            "group": "root"
+                          }
+
+                        },
+                        "commands": {
+                            "01update_pkgs": {
+                                "command": "apt-get update && apt-get upgrade -y"
+                            },
+                            "02install_ansible": {
+                                "command": "apt-get install ansible"
+                            }
+                        }
+                    }
+                }
+            },
+            "Properties": {
+                "IamInstanceProfile" : {"Ref" : "InstanceProfile"},
+                "BlockDeviceMappings": [
+                    {
+                        "DeviceName": "/dev/sda1",
+                        "Ebs": {
+                            "VolumeSize": {
+                                "Ref": "EBSVolumeSize"
+                            }
+                        }
+                    }
+                ],
+                "ImageId": {
+                    "Ref": "AMI"
+                },
+                "InstanceType": {
+                    "Ref": "InstanceType"
+                },
+                "KeyName": {
+                    "Ref": "KeyName"
+                },
+                "SecurityGroupIds": [
+                    {
+                        "Ref": "SecurityGroup"
+                    }
+                ],
+                "SubnetId": {
+                    "Ref": "Subnet"
+                },
+                "Tags": [
+                    {
+                        "Key": "Name",
+                        "Value": {
+                            "Ref": "InstanceName"
+                        }
+                    },
+                    {
+                        "Key": "Playbooks",
+                        "Value": "unzip"
+                    },
+                    {
+                        "Key": "Owner",
+                        "Value": "test"
+                    }
+                ],
+                "UserData": {
+                    "Fn::Base64": {
+                        "Fn::Join": [
+                            "",
+                            [
+                                "#!/bin/bash -xe\n",                                
+    	                        "apt-get update\n",
+                                "apt-get install ansible\n",
+                                "apt-get install -y python-setuptools\n",
+                                "mkdir -p /opt/aws/bin\n",
+                                "wget https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-latest.tar.gz\n",
+                                "easy_install --script-dir /opt/aws/bin aws-cfn-bootstrap-latest.tar.gz\n",
+                                " apt-get update\n",
+                                "/opt/aws/bin/cfn-init --region ",
+                                {
+                                    "Ref": "AWS::Region"
+                                },
+                                " -s ",
+                                {
+                                    "Ref": "AWS::StackName"
+                                },
+                                " -r Instance\n"
+                            ]
+                        ]
+                    }
+                }
+            },
+            "Type": "AWS::EC2::Instance"
+            },
+        "EIPAddress": {
+            "Type": "AWS::EC2::EIP"
+        },
+        "IPAssoc": {
+            "Type": "AWS::EC2::EIPAssociation",
+            "Properties": {
+                "InstanceId": {
+                    "Ref": "Instance"
+                },
+                "EIP": {
+                    "Ref": "EIPAddress"
+                }
+            }
+        },
+        "SecurityGroup": {
+            "Properties": {
+                "GroupDescription": "Allow SSH, HTTP, and HTTPS access",
+                "SecurityGroupIngress": [
+                    {
+                        "CidrIp": "0.0.0.0/0",
+                        "FromPort": "22",
+                        "IpProtocol": "tcp",
+                        "ToPort": "22"
+                    },
+                    {
+                        "CidrIp": "0.0.0.0/0",
+                        "FromPort": "443",
+                        "IpProtocol": "tcp",
+                        "ToPort": "443"
+                    }
+                ],
+                "VpcId": {
+                    "Ref": "VPC"
+                }
+            },
+            "Type": "AWS::EC2::SecurityGroup"
+        }
+	},
+	"Outputs" : {
+		"PublicIP": {
+			"Value": { "Fn::GetAtt": [ "Instance", "PublicIp"]},
+			"Description": "Public IP of the machine"
+		}
+	}
+
+}
